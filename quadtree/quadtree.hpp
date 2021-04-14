@@ -31,33 +31,33 @@ namespace quadtree {
 		int stored = 0;
 		int leafCount = 0;
 		int binSize;
-		TreeReducer<Data, Bounds> reducer;
+		TreeReducer<Data, Bounds> *reducer;
 
 		Bounds bounds;
 
 		bool container = false;
 		TreeNode *children[sections];
-		TreeNode(int binSize, bool container, Bounds bounds, TreeReducer<Data, Bounds> reducer): binSize(binSize), bounds(bounds) {
+		TreeNode(int binSize, bool container, Bounds bounds, TreeReducer<Data, Bounds> *reducer): binSize(binSize), bounds(bounds) {
 			values = new Data*[binSize];
-			this->reducer=reducer;
+			this->reducer = reducer;
 			if (container) makeContainer();
 		}
 
 		void makeContainer() {
+			leafCount = stored;
 			for (int i = 0; i < sections; i++) {
-				auto b = reducer.getBounds(this->bounds, i);
+				auto b = reducer->getBounds(this->bounds, i);
 				children[i] = new TreeNode<Data, Bounds, sections>(binSize, false, b, reducer);
 			}
 			for (int i = 0; i < stored; i++) {
 				for (int j = 0; j < sections; j++) {
-					if (reducer.inBounds(*values[i], children[j]->bounds)) {
+					if (reducer->inBounds(*values[i], children[j]->bounds)) {
 						children[j]->values[children[j]->stored] = values[i];
 						children[j]->stored++;
+						break;
 					}
-					break;
 				}
 			}
-			stored = 0;
 			this->container = true;
 		}
 
@@ -78,7 +78,7 @@ namespace quadtree {
 				TreeReducer<Data, Bounds> reducer = {.distance=distance, .inBounds=inBounds, .minDistance=minDistance, .getBounds=getBounds}) 
 			: binSize(binSize), rootBounds(rootBounds), reducer(reducer) {
 
-			root = new Node(binSize, true, rootBounds, reducer);
+			root = new Node(binSize, true, rootBounds, &this->reducer);
 		}
 		~QuadTree() {
 			delete root;
@@ -124,32 +124,33 @@ quadtree::QuadTree<Data, Bounds, sections>::insert(Data &data, Node *node) const
 
 template<class Data, class Bounds, unsigned int sections>
 Data* quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj) {
-	std::priority_queue<std::pair<float, Node*>> dfs;
-
-	int visited = 0;
+	auto compare = [](std::pair<float, Node*> l, std::pair<float, Node*> r) {
+		return l.first > r.first;
+	};
+	std::priority_queue<std::pair<float, Node*>, std::vector<std::pair<float, Node*>>, decltype(compare)> dfs(compare);
 	dfs.emplace(0.f, root);
 	
 	float minDist = INFINITY;
 	Data *closest;
 
 	while (dfs.size() > 0) {
-		Node *current = dfs.top().second;
-		float dist = -dfs.top().first;
+		auto top = dfs.top();
+		Node* current = top.second;
+		float dist = top.first;
 		dfs.pop();
 
-		if (current->leafCount == 0 || dist >= minDist) {
-			//continue;
+		if (dist >= minDist) {
+			continue;
 		}
 		if (current->container) {
 			for (int i = 0; i < sections; i++) {
-				dfs.emplace(-reducer.minDistance(obj, current->children[i]->bounds), current->children[i]);
+				if ((current->children[i]->container && current->children[i]->leafCount > 0) || current->children[i]->stored > 0)
+					dfs.emplace(reducer.minDistance(obj, current->children[i]->bounds), current->children[i]);
 			}
 		}
 		else {
 			for (int i = 0; i < current->stored; i++) {
 				dist = reducer.distance(obj, *current->values[i]);
-				visited++;
-//				std::cout << obj.first << " " << obj.second << " " << current->values[i]->first << " " << current->values[i]->second << std::endl;
 				if (dist <= minDist) {
 					minDist = dist;
 					closest = current->values[i];
@@ -157,8 +158,6 @@ Data* quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj) {
 			}
 		}
 	}
-
-	std::cout << visited << " visited" << std::endl;
 
 	return closest;
 }
