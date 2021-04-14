@@ -79,7 +79,7 @@ int main() {
 	mt19937 gen{rd()};
 	normal_distribution<float> norm(0.f, 0.3f);
 
-	for (int i = 0; i < 100; i++) {
+	for (int i = 0; i < 30000; i++) {
 		pair<float, float> *p = new pair<float, float>(clamp(norm(rd), -1.f, 1.f), clamp(norm(rd), -1.f, 1.f));
 		points.push_back(p);
 	}
@@ -94,22 +94,32 @@ int main() {
 	cout << "Indexed in " << seconds.count() << "s" << endl;
 
 
+	chrono::duration<double> treeTime;
+	chrono::duration<double> slowTime;
+	start = chrono::system_clock::now();
 	for (int i = 0; i < points.size(); i++) {
+		// Add the amount of time to query the tree
+		start = chrono::system_clock::now();
 		pairf* nearest = tree.nearest(*points[i]);
-		if (nearest != points[i]) {
+		end = chrono::system_clock::now();
+		treeTime += end - start;
+
+		// Add the amount of time for a slow query
+		start = chrono::system_clock::now();
+		pairf* nearestSlow = slowNearest(*points[i], points);
+		end = chrono::system_clock::now();
+		slowTime += end - start;
+
+		if (nearest != points[i] || nearestSlow != points[i]) {
 			cout << "Wrong nearest on index " << i << endl;
 			cout << nearest->first << " vs " << points[i]->first << ", " << nearest->second << ", " << points[i]->second << endl;
 		}
 	}
-	auto nearest = tree.nearest(pair<float, float>(0.f, 0.f));
+	end = chrono::system_clock::now();
+	treeTime += end - start;
+	cout << "Queried all in " << treeTime.count() << "s using tree" << endl;
+	cout << "           and " << slowTime.count() << "s using loop" << endl;
 
-	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 4; j++) {
-			cout << tree.root->children[i]->children[j]->leafCount << endl;
-		}
-	}
-
-	cout << nearest->first << " " << nearest->second << endl;
 
 	return 0;
 }
