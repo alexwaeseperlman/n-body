@@ -1,4 +1,4 @@
-#include "quadtree.hpp"
+#include <quadtree/quadtree.hpp>
 
 #define clamp(x, l, h) (std::min(std::max(x, l), h))
 

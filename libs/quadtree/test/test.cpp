@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include "quadtree.hpp"
+#include <quadtree/quadtree.hpp>
 #include <random>
 #include <chrono>
 
