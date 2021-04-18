@@ -4,35 +4,11 @@
 #include <random>
 #include <chrono>
 
+//#define COMPARE_SLOW
 #define clamp(x, y, z) (std::min(std::max(x, y), z))
 
 using namespace quadtree;
 using namespace std;
-
-/*struct Body {
-	float x, y;
-	float mass;
-};
-
-struct Reducer : TreeReducer<Body, 4> {
-	unsigned int assignBody(const Body &body, int depth) {
-		return assign(pair<float, float>(body.x, body.y), depth);
-	}
-
-	Body reduceBody(const Body bodies[4]) {
-		Body out{0.f,0.f,0.f};
-		for (int i = 0; i < 4; i++) {
-			out.x += bodies[i].x / 4;
-			out.y += bodies[i].y / 4;
-			out.mass += bodies[i].mass / 4;
-		}
-		return out;
-	}
-
-	float distance(Body a, Body b) {
-		return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
-	}
-};*/
 
 pairf *slowNearest(pairf point, vector<pairf*> points) {
 	float dist = INFINITY;
@@ -49,29 +25,6 @@ pairf *slowNearest(pairf point, vector<pairf*> points) {
 }
 
 int main() {
-//	Reducer reducer;
-//	QuadTree<Body, 4> tree(reducer);
-//	vector<Body> bodies;
-//
-//	random_device rd{};
-//	mt19937 gen{rd()};
-//	normal_distribution<float> norm(0.f, 0.3f);
-//
-//	for (int i = 0; i < 100; i++) {
-//		Body rand{.x=clamp(norm(gen), -1.f, 1.f), .y=clamp(norm(gen), -1.f, 1.f), .mass=pow(norm(gen), 2.f) * 100};
-//		bodies.push_back(rand);
-//	}
-//
-//	tree.index(bodies);
-//
-//	cout << tree.nearest(bodies[0])->x << tree.nearest(bodies[0])->y << endl;
-//
-//	// Compare speed of getting the nearest body from quadtree vs normal
-//
-//	for (int i = 0; i < 100; i++) {
-//
-//	}
-//
 	QuadTree<> tree(2);
 	vector<pairf*> points;
 
@@ -79,7 +32,7 @@ int main() {
 	mt19937 gen{rd()};
 	normal_distribution<float> norm(0.f, 0.3f);
 
-	for (int i = 0; i < 30000; i++) {
+	for (int i = 0; i < 100000; i++) {
 		pair<float, float> *p = new pair<float, float>(clamp(norm(rd), -1.f, 1.f), clamp(norm(rd), -1.f, 1.f));
 		points.push_back(p);
 	}
@@ -104,6 +57,7 @@ int main() {
 		end = chrono::system_clock::now();
 		treeTime += end - start;
 
+#ifdef COMPARE_SLOW
 		// Add the amount of time for a slow query
 		start = chrono::system_clock::now();
 		pairf* nearestSlow = slowNearest(*points[i], points);
@@ -114,11 +68,14 @@ int main() {
 			cout << "Wrong nearest on index " << i << endl;
 			cout << nearest->first << " vs " << points[i]->first << ", " << nearest->second << ", " << points[i]->second << endl;
 		}
+#endif
 	}
 	end = chrono::system_clock::now();
 	treeTime += end - start;
 	cout << "Queried all in " << treeTime.count() << "s using tree" << endl;
+#ifdef COMPARE_SLOW
 	cout << "           and " << slowTime.count() << "s using loop" << endl;
+#endif
 
 
 	return 0;
