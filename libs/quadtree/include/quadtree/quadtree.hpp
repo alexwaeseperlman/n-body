@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include <vector>
 #include <math.h>
 #include <queue>
@@ -17,9 +18,9 @@ namespace quadtree {
 		Bounds (*getBounds)(const Bounds &parent, int i);
 	};
 
-
 	using pairf = std::pair<float, float>;
 
+	// Default tree reducer methods
 	float distance(const pairf &a, const pairf &b);
 	bool inBounds(const pairf &data, const std::pair<pairf, pairf> &bounds);
 	float minDistance(const pairf &data, const std::pair<pairf, pairf> &bounds);
@@ -43,12 +44,15 @@ namespace quadtree {
 			if (container) makeContainer();
 		}
 
+		// Move all stored data into child nodes
 		void makeContainer() {
 			leafCount = stored;
+
 			for (int i = 0; i < sections; i++) {
 				auto b = reducer->getBounds(this->bounds, i);
 				children[i] = new TreeNode<Data, Bounds, sections>(binSize, false, b, reducer);
 			}
+
 			for (int i = 0; i < stored; i++) {
 				for (int j = 0; j < sections; j++) {
 					if (reducer->inBounds(*values[i], children[j]->bounds)) {
@@ -66,6 +70,7 @@ namespace quadtree {
 			delete values;
 		}
 	};
+
 	
 	template<class Data = pairf, class Bounds=std::pair<pairf, pairf>, unsigned int sections=4>
 	class QuadTree {
@@ -85,6 +90,7 @@ namespace quadtree {
 		}
 
 		Data* nearest(Data obj);
+		std::map<float, Data*> nearest(Data obj, int n);
 
 		Node* insert(Data &data, Node* node) const;
 		void initialize(std::vector<Data> &data);
@@ -124,42 +130,72 @@ quadtree::QuadTree<Data, Bounds, sections>::insert(Data &data, Node *node) const
 
 template<class Data, class Bounds, unsigned int sections>
 Data* quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj) {
-	auto compare = [](std::pair<float, Node*> l, std::pair<float, Node*> r) {
-		return l.first > r.first;
+	return nearest(obj, 1)[0];
+}
+template<class Data, class Bounds, unsigned int sections>
+std::map<float, Data*> quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj, int n) {
+	auto compare = [](std::pair<float, void*> l, std::pair<float, void*> r) {
+		return l.first < r.first;
 	};
+
 	std::priority_queue<std::pair<float, Node*>, std::vector<std::pair<float, Node*>>, decltype(compare)> dfs(compare);
 	dfs.emplace(0.f, root);
 	
 	float minDist = INFINITY;
-	Data *closest;
+	// Save memory by using a raw array instead of a set.
+	// Closest items are stored as a heap and the largest one is removed every iteration
+	std::pair<float, Data*>* closest = new std::pair<float, Data*>[n + 1];
+	for (int i = 0; i < n + 1; i++) closest[i].first = INFINITY;
+	std::make_heap(closest, closest + n + 1, compare);
 
 	while (dfs.size() > 0) {
 		auto top = dfs.top();
 		Node* current = top.second;
-		float dist = top.first;
+		float dist = -top.first;
 		dfs.pop();
+
 
 		if (dist >= minDist) {
 			continue;
 		}
+		// Queue up child nodes for search if the current node is a container
 		if (current->container) {
 			for (int i = 0; i < sections; i++) {
-				if ((current->children[i]->container && current->children[i]->leafCount > 0) || current->children[i]->stored > 0)
-					dfs.emplace(reducer.minDistance(obj, current->children[i]->bounds), current->children[i]);
+				float childMinDist = reducer.minDistance(obj, current->children[i]->bounds);
+				bool containsSubNodes = (current->children[i]->container && current->children[i]->leafCount > 0);
+				if ((containsSubNodes || current->children[i]->stored > 0) && childMinDist < minDist)
+					dfs.emplace(-childMinDist, current->children[i]);
 			}
 		}
+		// Update the closest elements
 		else {
 			for (int i = 0; i < current->stored; i++) {
 				dist = reducer.distance(obj, *current->values[i]);
 				if (dist <= minDist) {
-					minDist = dist;
-					closest = current->values[i];
+					// Push the current element to the heap
+					closest[n] = std::pair<float, Data*>(dist, current->values[i]);
+					std::push_heap(closest, closest + n + 1, compare);
+
+					// Use the highest distance in the heap as minDist.
+					// This is the smallest distance that is guaranteed to not be in the top n
+					// closest elements.
+					minDist = closest[0].first;
+					// Remove the highest so the heap now contains the n smallest visited values
+					std::pop_heap(closest, closest + n + 1, compare);
 				}
 			}
 		}
 	}
 
-	return closest;
+	// Make a map out of the distances
+	std::map<float, Data*> out;
+	for (int i = 0; i < n; i ++) {
+		if (closest[i].second) out.insert(closest[i]);
+	}
+
+	delete[] closest;
+
+	return out;
 }
 
 template<class Data, class Bounds, unsigned int sections>

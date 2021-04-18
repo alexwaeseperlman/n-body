@@ -4,7 +4,7 @@
 #include <random>
 #include <chrono>
 
-//#define COMPARE_SLOW
+#define COMPARE_SLOW
 #define clamp(x, y, z) (std::min(std::max(x, y), z))
 
 using namespace quadtree;
@@ -32,7 +32,7 @@ int main() {
 	mt19937 gen{rd()};
 	normal_distribution<float> norm(0.f, 0.3f);
 
-	for (int i = 0; i < 100000; i++) {
+	for (int i = 0; i < 30000; i++) {
 		pair<float, float> *p = new pair<float, float>(clamp(norm(rd), -1.f, 1.f), clamp(norm(rd), -1.f, 1.f));
 		points.push_back(p);
 	}
