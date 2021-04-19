@@ -4,7 +4,8 @@
 #include <random>
 #include <chrono>
 
-#define COMPARE_SLOW
+#define COMPARE_SLOW false
+#define CHECK_ANSWERS true
 #define clamp(x, y, z) (std::min(std::max(x, y), z))
 
 using namespace quadtree;
@@ -25,58 +26,93 @@ pairf *slowNearest(pairf point, vector<pairf*> points) {
 }
 
 int main() {
-	QuadTree<> tree(2);
-	vector<pairf*> points;
+	QuadTree<> tree(80);
+	vector<pairf> points;
 
 	random_device rd{};
 	mt19937 gen{rd()};
-	normal_distribution<float> norm(0.f, 0.3f);
+	normal_distribution<float> norm(0.f, 0.2f);
 
-	for (int i = 0; i < 30000; i++) {
-		pair<float, float> *p = new pair<float, float>(clamp(norm(rd), -1.f, 1.f), clamp(norm(rd), -1.f, 1.f));
+	for (int i = 0; i < 1000000; i++) {
+		pair<float, float> p(clamp(norm(rd), -.8f, .8f), clamp(norm(rd), -.8f, .8f));
 		points.push_back(p);
 	}
 	
 	// Time indexing the array
 	auto start = chrono::system_clock::now();
-	for (int i = 0; i < points.size(); i++) {
-		tree.insert(*points[i], tree.root);
-	}
+	tree.initialize(points);
 	auto end = chrono::system_clock::now();
 	chrono::duration<double> seconds = end - start;
 	cout << "Indexed in " << seconds.count() << "s" << endl;
 
+	// Time moving each element
+	start = chrono::system_clock::now();
+	for (int i = 0; i < points.size(); i++) {
+		auto delta = points[points.size() - i - 1];
+		points[i].first += delta.first * 0.1f;
+		points[i].second += delta.second * 0.1f;
+
+		tree.update(points[i]);
+	}
+	end = chrono::system_clock::now();
+	seconds = end - start;
+	cout << "Moved all in " << seconds.count() << "s" << endl;
+
+	// Time moving each element
+	for (int i = 0; i < points.size(); i++) {
+		auto delta = points[points.size() - i - 1];
+		points[i].first += delta.first * 0.1f;
+		points[i].second += delta.second * 0.1f;
+	}
+	start = chrono::system_clock::now();
+	tree.reindex();
+	end = chrono::system_clock::now();
+	seconds = end - start;
+	cout << "Reindexed in " << seconds.count() << "s" << endl;
 
 	chrono::duration<double> treeTime;
 	chrono::duration<double> slowTime;
+
+	// Tree benchmark
 	start = chrono::system_clock::now();
+#pragma omp parallel for
 	for (int i = 0; i < points.size(); i++) {
-		// Add the amount of time to query the tree
-		start = chrono::system_clock::now();
-		pairf* nearest = tree.nearest(*points[i]);
-		end = chrono::system_clock::now();
-		treeTime += end - start;
+		pairf const* nearest = tree.nearest(points[i]);
 
-#ifdef COMPARE_SLOW
+#if CHECK_ANSWERS
+		if (nearest != &points[i]) {
+			cout << "Wrong nearest on index " << i << endl;
+			cout << nearest->first << " vs " << points[i].first << ", " << nearest->second << ", " << points[i].second << endl;
+		}
+#endif
+	}
+	end = chrono::system_clock::now();
+	treeTime = end - start;
+
+	cout << "Queried all in " << treeTime.count() << "s using tree" << endl;
+
+
+	// Slow benchmark
+#if COMPARE_SLOW
+	start = chrono::system_clock::now();
+#pragma omp parallel for
+	for (int i = 0; i < points.size(); i++) {
 		// Add the amount of time for a slow query
-		start = chrono::system_clock::now();
-		pairf* nearestSlow = slowNearest(*points[i], points);
-		end = chrono::system_clock::now();
+		pairf* nearest = slowNearest(*points[i], points);
 		slowTime += end - start;
-
-		if (nearest != points[i] || nearestSlow != points[i]) {
+		
+#if CHECK_ANSWERS
+		if (nearest != points[i]) {
 			cout << "Wrong nearest on index " << i << endl;
 			cout << nearest->first << " vs " << points[i]->first << ", " << nearest->second << ", " << points[i]->second << endl;
 		}
 #endif
 	}
 	end = chrono::system_clock::now();
-	treeTime += end - start;
-	cout << "Queried all in " << treeTime.count() << "s using tree" << endl;
-#ifdef COMPARE_SLOW
+	slowTime = end - start;
+
 	cout << "           and " << slowTime.count() << "s using loop" << endl;
 #endif
-
 
 	return 0;
 }
