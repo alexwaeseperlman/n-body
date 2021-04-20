@@ -31,7 +31,7 @@ namespace quadtree {
 
 	template<class Data, class Bounds, unsigned int sections>
 	struct TreeNode {
-		std::unordered_set<Data const*> values;
+		std::unordered_set<Data*> values;
 		int leafCount = 0;
 		TreeReducer<Data, Bounds> *reducer;
 
@@ -73,7 +73,7 @@ namespace quadtree {
 			if (!this->container) return;
 			for (int i = 0; i < sections; i++) {
 				if (children[i]->container) children[i]->makeStorage();
-				for (Data const* data : children[i]->values) {
+				for (Data* data : children[i]->values) {
 					values.insert(data);
 				}
 				delete children[i];
@@ -95,7 +95,7 @@ namespace quadtree {
 		int binSize;
 		QuadTree(
 				int binSize,
-				Bounds rootBounds=std::pair<pairf, pairf>{ {-1.f, -1.f}, {1.f, 1.f} },
+				Bounds rootBounds = std::pair<pairf, pairf>{ {-1.f, -1.f}, {1.f, 1.f} },
 				TreeReducer<Data, Bounds> reducer = {.distance=distance, .inBounds=inBounds, .minDistance=minDistance, .getBounds=getBounds}) 
 			: binSize(binSize), rootBounds(rootBounds), reducer(reducer) {
 
@@ -105,15 +105,15 @@ namespace quadtree {
 			delete root;
 		}
 
-		std::unordered_map<Data const*, Node*> dataLocations;
+		std::unordered_map<Data*, Node*> dataLocations;
 
-		Data const* nearest(Data obj) const;
-		std::map<float, Data const*> nearest(Data obj, int n) const;
+		Data* nearest(Data obj) const;
+		std::map<float, Data*> nearest(Data obj, int n) const;
 
 		// Insert a node, creating containers as necessary
 		// TODO: There should be a maximum recursion depth for insert 
 		// 		 if the limit is exceeded it's ok to create a node with > binSize data
-		Node* insert(Data const& data, Node* node);
+		Node* insert(Data& data, Node* node);
 
 		// Initialize the quadtree with a vector
 		void initialize(std::vector<Data> &data);
@@ -122,13 +122,13 @@ namespace quadtree {
 		void indexData(Node* node);
 
 		// Update the index of a piece of data after a change
-		bool update(Data const& data);
+		bool update(Data& data);
 
 		// Update the every item in the tree
 		void reindex() { reindex(root); }
 		void reindex(Node* node);
 
-		Node* remove(Data const& data);
+		Node* remove(Data& data);
 
 		TreeReducer<Data, Bounds> reducer;
 		Node *root;
@@ -138,7 +138,7 @@ namespace quadtree {
 
 template<class Data, class Bounds, unsigned int sections>
 quadtree::TreeNode<Data, Bounds, sections>*
-quadtree::QuadTree<Data, Bounds, sections>::insert(Data const& data, Node *node) {
+quadtree::QuadTree<Data, Bounds, sections>::insert(Data& data, Node *node) {
 	// Find a leaf node
 	while (node->container) {
 		// Take the first container that contains node in its bounding box
@@ -167,29 +167,29 @@ quadtree::QuadTree<Data, Bounds, sections>::insert(Data const& data, Node *node)
 }
 
 template<class Data, class Bounds, unsigned int sections>
-Data const* quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj) const {
+Data* quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj) const {
 	return nearest(obj, 1).begin()->second;
 }
 template<class Data, class Bounds, unsigned int sections>
-std::map<float, Data const*> quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj, int n) const {
-	auto compare = [](std::pair<float, void const*> l, std::pair<float, void const*> r) {
+std::map<float, Data*> quadtree::QuadTree<Data, Bounds, sections>::nearest(Data obj, int n) const {
+	auto compare = [](std::pair<float, void*> l, std::pair<float, void*> r) {
 		return l.first < r.first;
 	};
 
-	std::priority_queue<std::pair<float, Node const*>, std::vector<std::pair<float, Node const*>>, decltype(compare)> dfs(compare);
+	std::priority_queue<std::pair<float, Node*>, std::vector<std::pair<float, Node*>>, decltype(compare)> dfs(compare);
 	dfs.emplace(0.f, root);
 	
 	float minDist = INFINITY;
 	// Save memory by using a raw heap instead of a priority queue
 	// Closest items are stored as a heap and the largest one is removed every iteration
-	std::pair<float, Data const*>* closest = new std::pair<float, Data const*>[n + 1];
+	std::pair<float, Data*>* closest = new std::pair<float, Data*>[n + 1];
 	for (int i = 0; i < n + 1; i++) closest[i].first = INFINITY;
 	std::make_heap(closest, closest + n + 1, compare);
 
 	while (dfs.size() > 0) {
 		auto top = dfs.top();
-		Node const* current = top.second;
-		const float dist = -top.first;
+		Node* current = top.second;
+		float dist = -top.first;
 		dfs.pop();
 
 
@@ -199,7 +199,7 @@ std::map<float, Data const*> quadtree::QuadTree<Data, Bounds, sections>::nearest
 		// Queue up child nodes for search if the current node is a container
 		if (current->container) {
 			for (int i = 0; i < sections; i++) {
-				const float childMinDist = reducer.minDistance(obj, current->children[i]->bounds);
+				float childMinDist = reducer.minDistance(obj, current->children[i]->bounds);
 				bool containsSubNodes = (current->children[i]->container && current->children[i]->leafCount > 0);
 				if ((containsSubNodes || current->children[i]->values.size() > 0) && childMinDist < minDist)
 					dfs.emplace(-childMinDist, current->children[i]);
@@ -208,10 +208,10 @@ std::map<float, Data const*> quadtree::QuadTree<Data, Bounds, sections>::nearest
 		// Update the closest elements
 		else {
 			for (auto value : current->values) {
-				const float currentDist = reducer.distance(obj, *value);
+				float currentDist = reducer.distance(obj, *value);
 				if (currentDist <= minDist) {
 					// Push the current element to the heap
-					closest[n] = std::pair<float, Data const*>(currentDist, value);
+					closest[n] = std::pair<float, Data*>(currentDist, value);
 					std::push_heap(closest, closest + n + 1, compare);
 
 					// Use the highest distance in the heap as minDist.
@@ -226,7 +226,7 @@ std::map<float, Data const*> quadtree::QuadTree<Data, Bounds, sections>::nearest
 	}
 
 	// Make a map out of the distances
-	std::map<float, Data const*> out;
+	std::map<float, Data*> out;
 	for (int i = 0; i < n; i ++) {
 		if (closest[i].second) out.insert(closest[i]);
 	}
@@ -249,7 +249,7 @@ void quadtree::QuadTree<Data, Bounds, sections>::indexData(Node* node) {
 }
 
 template<class Data, class Bounds, unsigned int sections>
-quadtree::TreeNode<Data, Bounds, sections>* quadtree::QuadTree<Data, Bounds, sections>::remove(Data const& data) {
+quadtree::TreeNode<Data, Bounds, sections>* quadtree::QuadTree<Data, Bounds, sections>::remove(Data& data) {
 	Node* node = dataLocations[&data];
 
 	node->values.erase(&data);
@@ -277,7 +277,7 @@ quadtree::TreeNode<Data, Bounds, sections>* quadtree::QuadTree<Data, Bounds, sec
 
 
 template<class Data, class Bounds, unsigned int sections>
-bool quadtree::QuadTree<Data, Bounds, sections>::update(Data const& target) {
+bool quadtree::QuadTree<Data, Bounds, sections>::update(Data& target) {
 	if (!dataLocations[&target]) return false;
 
 	Node *node = remove(target);
